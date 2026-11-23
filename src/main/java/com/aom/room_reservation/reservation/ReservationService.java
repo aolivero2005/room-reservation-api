@@ -7,6 +7,8 @@ import com.aom.room_reservation.reservation.dto.ReservationResponse;
 import com.aom.room_reservation.room.Room;
 import com.aom.room_reservation.room.RoomRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +45,13 @@ public class ReservationService {
         Reservation saved = reservationRepository.save(
                 new Reservation(room, request.responsible().trim(), start, end));
         return ReservationResponse.from(saved);
+    }
+
+    /** Filtered, paginated listing. An unknown roomId simply yields an empty page. */
+    @Transactional(readOnly = true)
+    public Page<ReservationResponse> search(ReservationFilter filter, Pageable pageable) {
+        return reservationRepository.findAll(ReservationSpecifications.from(filter), pageable)
+                .map(ReservationResponse::from);
     }
 
     @Transactional(readOnly = true)
