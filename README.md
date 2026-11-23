@@ -140,13 +140,14 @@ De la lista que me dio la IA, más un punto que vi yo (las credenciales escritas
 - **Errores de base disfrazados de 409**: cualquier error de integridad se respondía como "nombre duplicado" o "sala ocupada". Ahora solo esos dos casos dan 409. La primera versión de esta corrección fallaba con PostgreSQL y apareció al probarla contra la base real.
 - **Formato del 401**: no coincidía con el resto de errores.
 - **Manejador de errores genérico**: habría convertido un "acceso denegado" en un 500.
-
-Los demás puntos están en "Qué haría con más tiempo".
-
-<!-- TODO (Alexei): añade aquí con tus palabras lo que revisaste o decidiste tú, y por qué elegiste esas correcciones. Si no revisaste el código de cada paso, ajusta "Qué acepté". -->
-
 ---
-
 ## Tiempo invertido
 
-<!-- TODO (Alexei): indicar el tiempo real. -->
+Tiempo invertido
+
+Unas 4 horas de trabajo efectivo, repartidas a lo largo de un día con interrupciones (no fue trabajo continuo).
+
+- ~3 h en lo que pide el enunciado: la API, validaciones, seguridad, tests y el README.
+- ~1 h en extras: el perfil de PostgreSQL, la documentación OpenAPI y las correcciones que salieron de la revisión crítica del código.
+
+Superé las 3 horas sugeridas. Decidí priorizar que la solución fuera correcta (concurrencia, errores claros y tests que lo verifican), y lo que quedó fuera está en "Qué haría con más tiempo".
