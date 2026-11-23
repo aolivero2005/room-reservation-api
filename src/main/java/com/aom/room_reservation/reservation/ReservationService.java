@@ -47,6 +47,21 @@ public class ReservationService {
         return ReservationResponse.from(saved);
     }
 
+    /**
+     * Soft delete: the reservation stays (status CANCELLED) for history and its slot becomes
+     * free, because the overlap check only considers ACTIVE reservations.
+     * Cancelling twice is a 409, so the client learns the request had no effect.
+     */
+    @Transactional
+    public void cancel(Long id) {
+        Reservation reservation = reservationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Reservation", id));
+        if (reservation.isCancelled()) {
+            throw new ConflictException("Reservation " + id + " is already cancelled");
+        }
+        reservation.cancel(); // managed entity: the UPDATE is flushed on commit, no save() needed
+    }
+
     /** Filtered, paginated listing. An unknown roomId simply yields an empty page. */
     @Transactional(readOnly = true)
     public Page<ReservationResponse> search(ReservationFilter filter, Pageable pageable) {
