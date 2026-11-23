@@ -1,0 +1,24 @@
+# Optional PostgreSQL for the "postgres" Spring profile.
+#   docker compose up -d
+#   ./gradlew bootRun --args='--spring.profiles.active=postgres'
+# Host port defaults to 5433 to avoid clashing with a locally installed PostgreSQL.
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    container_name: room-reservation-db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-room_reservation}
+      POSTGRES_USER: ${DB_USER:-room}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-room}
+    ports:
+      - "${DB_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

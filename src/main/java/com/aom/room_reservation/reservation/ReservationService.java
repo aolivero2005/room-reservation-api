@@ -7,6 +7,7 @@ import com.aom.room_reservation.reservation.dto.ReservationResponse;
 import com.aom.room_reservation.room.Room;
 import com.aom.room_reservation.room.RoomRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -38,13 +39,23 @@ public class ReservationService {
         Instant end = request.end().toInstant();
 
         if (reservationRepository.existsOverlapping(room.getId(), start, end)) {
-            throw new ConflictException("Room '" + room.getName() + "' is not available between "
-                    + start + " and " + end + ": it overlaps an existing reservation");
+            throw slotNotAvailable(room, start, end);
         }
 
-        Reservation saved = reservationRepository.save(
-                new Reservation(room, request.responsible().trim(), start, end));
-        return ReservationResponse.from(saved);
+        try {
+            // flush now so that a database-level rejection (PostgreSQL exclusion constraint) happens
+            // here and is reported as 409, instead of surfacing as a 500 at commit time
+            Reservation saved = reservationRepository.saveAndFlush(
+                    new Reservation(room, request.responsible().trim(), start, end));
+            return ReservationResponse.from(saved);
+        } catch (DataIntegrityViolationException e) {
+            throw slotNotAvailable(room, start, end);
+        }
+    }
+
+    private static ConflictException slotNotAvailable(Room room, Instant start, Instant end) {
+        return new ConflictException("Room '" + room.getName() + "' is not available between "
+                + start + " and " + end + ": it overlaps an existing reservation");
     }
 
     /**

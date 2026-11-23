@@ -12,6 +12,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
@@ -56,7 +57,7 @@ class ReservationServiceTest {
         when(reservationRepository.existsOverlapping(1L,
                 Instant.parse("2030-01-15T13:00:00Z"), Instant.parse("2030-01-15T14:00:00Z")))
                 .thenReturn(false);
-        when(reservationRepository.save(any(Reservation.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(reservationRepository.saveAndFlush(any(Reservation.class))).thenAnswer(inv -> inv.getArgument(0));
 
         ReservationResponse response = reservationService.create(
                 new CreateReservationRequest(1L, "  Ana  ", START, END));
@@ -79,7 +80,7 @@ class ReservationServiceTest {
                 .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("Sala Andes")
                 .hasMessageContaining("overlaps an existing reservation");
-        verify(reservationRepository, never()).save(any());
+        verify(reservationRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -91,19 +92,32 @@ class ReservationServiceTest {
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("Room with id 99 not found");
         verify(reservationRepository, never()).existsOverlapping(anyLong(), any(), any());
-        verify(reservationRepository, never()).save(any());
+        verify(reservationRepository, never()).saveAndFlush(any());
     }
 
     @Test
     void locksTheRoomBeforeCheckingOverlaps() {
         when(roomRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(room));
-        when(reservationRepository.save(any(Reservation.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(reservationRepository.saveAndFlush(any(Reservation.class))).thenAnswer(inv -> inv.getArgument(0));
 
         reservationService.create(new CreateReservationRequest(1L, "Ana", START, END));
 
         // the plain findById would not take the lock and would allow double bookings under concurrency
         verify(roomRepository).findByIdForUpdate(1L);
         verify(roomRepository, never()).findById(anyLong());
+    }
+
+    @Test
+    void databaseRejectionOfOverlapIsReportedAsConflict() {
+        // e.g. the PostgreSQL exclusion constraint fires for a write the overlap check did not see
+        when(roomRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(room));
+        when(reservationRepository.saveAndFlush(any(Reservation.class)))
+                .thenThrow(new DataIntegrityViolationException("ex_reservations_no_overlap"));
+
+        assertThatThrownBy(() -> reservationService.create(
+                new CreateReservationRequest(1L, "Ana", START, END)))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("overlaps an existing reservation");
     }
 
     // ---------- cancel ----------
