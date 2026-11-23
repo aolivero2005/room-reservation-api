@@ -5,6 +5,8 @@ import com.aom.room_reservation.reservation.ReservationService;
 import com.aom.room_reservation.room.RoomController;
 import com.aom.room_reservation.room.RoomService;
 import com.aom.room_reservation.room.dto.RoomResponse;
+import com.aom.room_reservation.common.ResourceNotFoundException;
+import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,7 +19,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -79,9 +83,29 @@ class SecurityConfigTest {
                 .andExpect(header().string("WWW-Authenticate", "Basic realm=\"room-reservation\""))
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.status").value(401))
-                .andExpect(jsonPath("$.title").value("Unauthorized"));
+                .andExpect(jsonPath("$.title").value("Unauthorized"))
+                .andExpect(jsonPath("$.detail")
+                        .value("Valid credentials are required to create or cancel resources (HTTP Basic)"));
 
         verify(roomService, never()).create(any());
+    }
+
+    /** The 401 is written by the same MVC machinery as other errors, so the JSON has the same fields. */
+    @Test
+    void unauthorizedBodyHasTheSameShapeAsOtherErrors() throws Exception {
+        when(roomService.findById(99L)).thenThrow(new ResourceNotFoundException("Room", 99L));
+
+        String notFound = mockMvc.perform(get("/api/rooms/99"))
+                .andExpect(status().isNotFound())
+                .andReturn().getResponse().getContentAsString();
+        String unauthorized = mockMvc.perform(post("/api/rooms")
+                        .contentType(MediaType.APPLICATION_JSON).content(ROOM_JSON))
+                .andExpect(status().isUnauthorized())
+                .andReturn().getResponse().getContentAsString();
+
+        Map<String, Object> notFoundBody = JsonPath.read(notFound, "$");
+        Map<String, Object> unauthorizedBody = JsonPath.read(unauthorized, "$");
+        assertThat(unauthorizedBody.keySet()).isEqualTo(notFoundBody.keySet());
     }
 
     @Test

@@ -9,6 +9,8 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -27,7 +29,7 @@ import java.util.stream.Collectors;
  * <p>
  * Extending {@link ResponseEntityExceptionHandler} gives correct statuses for all standard
  * Spring MVC errors (405, 415, missing parameter...). We only override the ones whose default
- * message is not clear enough for an API client, and add our domain exceptions.
+ * message is not clear enough for an API client and add our domain exceptions.
  * <p>
  * Validation errors carry an extra {@code errors} array: [{"field": "...", "message": "..."}].
  */
@@ -48,6 +50,20 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ConflictException.class)
     public ProblemDetail handleConflict(ConflictException ex) {
         return problem(HttpStatus.CONFLICT, "Conflict", ex.getMessage());
+    }
+
+    // ---------- 401: missing or invalid credentials ----------
+
+    /**
+     * Reached from the security filter chain: the AuthenticationEntryPoint delegates here, so the 401
+     * is written by Spring MVC exactly like every other error (same converter, same JSON shape).
+     */
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ProblemDetail> handleAuthentication(AuthenticationException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .header(HttpHeaders.WWW_AUTHENTICATE, "Basic realm=\"room-reservation\"")
+                .body(problem(HttpStatus.UNAUTHORIZED, "Unauthorized",
+                        "Valid credentials are required to create or cancel resources (HTTP Basic)"));
     }
 
     // ---------- 400: validation ----------
@@ -134,9 +150,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     // ---------- 500: anything unexpected ----------
 
-    /** Logs the real cause and returns a generic message so internals are never exposed. */
+    /**
+     * Logs the real cause and returns a generic message so internals are never exposed.
+     * <p>
+     * AccessDeniedException is rethrown on purpose: Spring Security's ExceptionTranslationFilter must
+     * decide between 401 (anonymous user) and 403 (authenticated user). Handling it here would turn
+     * it into a 500 (or a fixed 403 even for anonymous users) as soon as method security is used.
+     */
     @ExceptionHandler(Exception.class)
-    public ProblemDetail handleUnexpected(Exception ex) {
+    public ProblemDetail handleUnexpected(Exception ex) throws Exception {
+        if (ex instanceof AccessDeniedException) {
+            throw ex;
+        }
         log.error("Unexpected error", ex);
         return problem(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error",
                 "An unexpected error occurred");

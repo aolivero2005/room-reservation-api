@@ -1,5 +1,6 @@
 package com.aom.room_reservation.config;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -8,6 +9,7 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.servlet.HandlerExceptionResolver;
 
 /**
  * Read endpoints (GET /api/**) are public; anything that creates or cancels requires HTTP Basic.
@@ -20,8 +22,10 @@ import org.springframework.security.web.SecurityFilterChain;
 public class SecurityConfig {
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        AuthenticationEntryPoint entryPoint = new ProblemDetailAuthenticationEntryPoint();
+    SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            @Qualifier("handlerExceptionResolver") HandlerExceptionResolver handlerExceptionResolver) throws Exception {
+        AuthenticationEntryPoint entryPoint = new ProblemDetailAuthenticationEntryPoint(handlerExceptionResolver);
 
         return http
                 .csrf(AbstractHttpConfigurer::disable)
