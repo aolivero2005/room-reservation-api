@@ -1,6 +1,7 @@
 package com.aom.room_reservation.reservation;
 
 import com.aom.room_reservation.common.ConflictException;
+import com.aom.room_reservation.common.ResourceNotFoundException;
 import com.aom.room_reservation.reservation.dto.CreateReservationRequest;
 import com.aom.room_reservation.reservation.dto.ReservationResponse;
 import org.junit.jupiter.api.Test;
@@ -28,12 +29,15 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -234,6 +238,35 @@ class ReservationControllerTest {
                         "Parameter '" + param + "' has an invalid value '" + value + "'")));
 
         verify(reservationService, never()).search(any(), any());
+    }
+
+    // ---------- cancel ----------
+
+    @Test
+    void cancelReturns204WithoutBody() throws Exception {
+        mockMvc.perform(delete("/api/reservations/5").with(csrf()))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(""));
+
+        verify(reservationService).cancel(5L);
+    }
+
+    @Test
+    void cancelUnknownReservationReturns404() throws Exception {
+        doThrow(new ResourceNotFoundException("Reservation", 99L)).when(reservationService).cancel(99L);
+
+        mockMvc.perform(delete("/api/reservations/99").with(csrf()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.detail").value("Reservation with id 99 not found"));
+    }
+
+    @Test
+    void cancelAlreadyCancelledReservationReturns409() throws Exception {
+        doThrow(new ConflictException("Reservation 5 is already cancelled")).when(reservationService).cancel(5L);
+
+        mockMvc.perform(delete("/api/reservations/5").with(csrf()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("Reservation 5 is already cancelled"));
     }
 
     private static ReservationResponse sampleResponse() {

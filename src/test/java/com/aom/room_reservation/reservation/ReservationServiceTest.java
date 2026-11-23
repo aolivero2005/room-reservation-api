@@ -105,4 +105,36 @@ class ReservationServiceTest {
         verify(roomRepository).findByIdForUpdate(1L);
         verify(roomRepository, never()).findById(anyLong());
     }
+
+    // ---------- cancel ----------
+
+    @Test
+    void cancelMarksActiveReservationAsCancelled() {
+        Reservation reservation = new Reservation(room, "Ana", START.toInstant(), END.toInstant());
+        when(reservationRepository.findById(5L)).thenReturn(Optional.of(reservation));
+
+        reservationService.cancel(5L);
+
+        assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.CANCELLED);
+    }
+
+    @Test
+    void cancellingTwiceIsAConflict() {
+        Reservation reservation = new Reservation(room, "Ana", START.toInstant(), END.toInstant());
+        reservation.cancel();
+        when(reservationRepository.findById(5L)).thenReturn(Optional.of(reservation));
+
+        assertThatThrownBy(() -> reservationService.cancel(5L))
+                .isInstanceOf(ConflictException.class)
+                .hasMessage("Reservation 5 is already cancelled");
+    }
+
+    @Test
+    void cancellingUnknownReservationIsNotFound() {
+        when(reservationRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> reservationService.cancel(99L))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("Reservation with id 99 not found");
+    }
 }
