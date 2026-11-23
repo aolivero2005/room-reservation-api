@@ -38,8 +38,8 @@ public class ReservationService {
         Instant end = request.end().toInstant();
 
         if (reservationRepository.existsOverlapping(room.getId(), start, end)) {
-            throw new ConflictException("Room '" + room.getName() + "' is already booked between "
-                    + start + " and " + end);
+            throw new ConflictException("Room '" + room.getName() + "' is not available between "
+                    + start + " and " + end + ": it overlaps an existing reservation");
         }
 
         Reservation saved = reservationRepository.save(

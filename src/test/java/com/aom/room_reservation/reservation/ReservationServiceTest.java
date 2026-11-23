@@ -78,7 +78,7 @@ class ReservationServiceTest {
                 new CreateReservationRequest(1L, "Ana", START, END)))
                 .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("Sala Andes")
-                .hasMessageContaining("already booked");
+                .hasMessageContaining("overlaps an existing reservation");
         verify(reservationRepository, never()).save(any());
     }
 

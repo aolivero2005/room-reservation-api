@@ -13,10 +13,12 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import com.aom.room_reservation.config.SecurityConfig;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -33,7 +35,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -44,11 +46,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Web slice test for reservations: request validation, query parameter binding and HTTP status mapping.
- * TODO(step 6): drop @WithMockUser/csrf() once the real SecurityConfig is in place.
+ * Security rules themselves are covered in SecurityConfigTest; here writes just run as an authenticated user.
  */
 @WebMvcTest(ReservationController.class)
-@WithMockUser
+@Import(SecurityConfig.class)
 class ReservationControllerTest {
+
+    private static final RequestPostProcessor ADMIN = user("admin");
 
     @Autowired
     private MockMvc mockMvc;
@@ -57,7 +61,7 @@ class ReservationControllerTest {
     private ReservationService reservationService;
 
     private ResultActions postReservation(String json) throws Exception {
-        return mockMvc.perform(post("/api/reservations").with(csrf())
+        return mockMvc.perform(post("/api/reservations").with(ADMIN)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json));
     }
@@ -148,8 +152,8 @@ class ReservationControllerTest {
     @Test
     void occupiedSlotReturns409() throws Exception {
         when(reservationService.create(any(CreateReservationRequest.class)))
-                .thenThrow(new ConflictException("Room 'Sala Andes' is already booked between "
-                        + "2030-01-15T13:00:00Z and 2030-01-15T14:00:00Z"));
+                .thenThrow(new ConflictException("Room 'Sala Andes' is not available between "
+                        + "2030-01-15T13:00:00Z and 2030-01-15T14:00:00Z: it overlaps an existing reservation"));
 
         postReservation("""
                 {"roomId": 1, "responsible": "Ana",
@@ -158,7 +162,8 @@ class ReservationControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.title").value("Conflict"))
                 .andExpect(jsonPath("$.detail").value(
-                        "Room 'Sala Andes' is already booked between 2030-01-15T13:00:00Z and 2030-01-15T14:00:00Z"));
+                        "Room 'Sala Andes' is not available between 2030-01-15T13:00:00Z and 2030-01-15T14:00:00Z: "
+                                + "it overlaps an existing reservation"));
     }
 
     // ---------- listing ----------
@@ -244,7 +249,7 @@ class ReservationControllerTest {
 
     @Test
     void cancelReturns204WithoutBody() throws Exception {
-        mockMvc.perform(delete("/api/reservations/5").with(csrf()))
+        mockMvc.perform(delete("/api/reservations/5").with(ADMIN))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
 
@@ -255,7 +260,7 @@ class ReservationControllerTest {
     void cancelUnknownReservationReturns404() throws Exception {
         doThrow(new ResourceNotFoundException("Reservation", 99L)).when(reservationService).cancel(99L);
 
-        mockMvc.perform(delete("/api/reservations/99").with(csrf()))
+        mockMvc.perform(delete("/api/reservations/99").with(ADMIN))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.detail").value("Reservation with id 99 not found"));
     }
@@ -264,7 +269,7 @@ class ReservationControllerTest {
     void cancelAlreadyCancelledReservationReturns409() throws Exception {
         doThrow(new ConflictException("Reservation 5 is already cancelled")).when(reservationService).cancel(5L);
 
-        mockMvc.perform(delete("/api/reservations/5").with(csrf()))
+        mockMvc.perform(delete("/api/reservations/5").with(ADMIN))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail").value("Reservation 5 is already cancelled"));
     }

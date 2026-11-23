@@ -5,13 +5,15 @@ import com.aom.room_reservation.common.ResourceNotFoundException;
 import com.aom.room_reservation.room.dto.CreateRoomRequest;
 import com.aom.room_reservation.room.dto.RoomResponse;
 import org.junit.jupiter.api.Test;
+import com.aom.room_reservation.config.SecurityConfig;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -22,7 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -33,11 +35,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * Web slice test: HTTP mapping, JSON shape, bean validation and error responses
  * (GlobalExceptionHandler is picked up by @WebMvcTest), with the service mocked.
- * TODO(step 6): drop @WithMockUser/csrf() once the real SecurityConfig is in place.
+ * Security rules themselves are covered in SecurityConfigTest; here writes just run as an authenticated user.
  */
 @WebMvcTest(RoomController.class)
-@WithMockUser
+@Import(SecurityConfig.class)
 class RoomControllerTest {
+
+    private static final RequestPostProcessor ADMIN = user("admin");
 
     private static final Instant CREATED_AT = Instant.parse("2026-11-23T12:00:00Z");
 
@@ -52,7 +56,7 @@ class RoomControllerTest {
         when(roomService.create(any(CreateRoomRequest.class)))
                 .thenReturn(new RoomResponse(1L, "Sala Andes", 8, CREATED_AT));
 
-        mockMvc.perform(post("/api/rooms").with(csrf())
+        mockMvc.perform(post("/api/rooms").with(ADMIN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "Sala Andes", "capacity": 8}
@@ -67,7 +71,7 @@ class RoomControllerTest {
 
     @Test
     void createWithInvalidBodyReturns400WithFieldErrorsAndDoesNotCallService() throws Exception {
-        mockMvc.perform(post("/api/rooms").with(csrf())
+        mockMvc.perform(post("/api/rooms").with(ADMIN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "", "capacity": 0}
@@ -86,7 +90,7 @@ class RoomControllerTest {
 
     @Test
     void createWithMissingCapacityReportsItAsRequired() throws Exception {
-        mockMvc.perform(post("/api/rooms").with(csrf())
+        mockMvc.perform(post("/api/rooms").with(ADMIN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "Sala Andes"}
@@ -98,7 +102,7 @@ class RoomControllerTest {
 
     @Test
     void createWithMalformedJsonReturns400() throws Exception {
-        mockMvc.perform(post("/api/rooms").with(csrf())
+        mockMvc.perform(post("/api/rooms").with(ADMIN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\": "))
                 .andExpect(status().isBadRequest())
@@ -107,7 +111,7 @@ class RoomControllerTest {
 
     @Test
     void createWithWrongFieldTypeNamesTheField() throws Exception {
-        mockMvc.perform(post("/api/rooms").with(csrf())
+        mockMvc.perform(post("/api/rooms").with(ADMIN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "Sala Andes", "capacity": "eight"}
@@ -121,7 +125,7 @@ class RoomControllerTest {
         when(roomService.create(any(CreateRoomRequest.class)))
                 .thenThrow(new ConflictException("A room named 'Sala Andes' already exists"));
 
-        mockMvc.perform(post("/api/rooms").with(csrf())
+        mockMvc.perform(post("/api/rooms").with(ADMIN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "Sala Andes", "capacity": 8}
