@@ -1,38 +1,32 @@
 # Room Reservation API
 
-API REST para reservar salas de reuniones: crear y listar salas; crear, listar (con filtros y paginación) y cancelar reservas. Detecta solapamientos (409), valida la entrada con errores 400 claros y protege las escrituras con autenticación.
+API REST para reservar salas de reuniones: crear y listar salas; crear, listar (con filtros y paginación) y cancelar reservas. Rechaza reservas solapadas (409), valida la entrada con errores 400 claros y protege las escrituras con autenticación.
 
-**Stack:** Java 21 · Spring Boot 4.2 · Spring Data JPA · Flyway · Spring Security · springdoc-openapi (Swagger UI) · H2 (por defecto) / PostgreSQL (perfil opcional) · JUnit 5 + Mockito + MockMvc.
+**Stack:** Java 21 · Spring Boot 4.2 · Spring Data JPA · Flyway · Spring Security · springdoc-openapi · H2 / PostgreSQL · JUnit 5 + Mockito + MockMvc.
 
 ---
 
 ## Cómo ejecutarlo
 
-### Requisitos
-- JDK 21 (el proyecto usa toolchain 21; cumple el requisito de Java 17+).
-- Docker, solo si se quiere usar PostgreSQL.
+Requisitos: JDK 21. Docker solo si se quiere usar PostgreSQL.
 
-### Arrancar (H2 en memoria, sin instalar nada)
 ```bash
-./gradlew bootRun          # Windows: gradlew.bat bootRun
-```
-La API queda en `http://localhost:8080`. El esquema lo crea Flyway al arrancar.
-
-- **Credenciales para crear/cancelar (HTTP Basic):** `admin` / `admin123` (configurables con las variables `APP_USER` y `APP_PASSWORD`).
-- **Swagger UI:** `http://localhost:8080/swagger-ui.html` (spec OpenAPI 3 en `/v3/api-docs`). Para probar los endpoints protegidos: botón **Authorize** → `admin` / `admin123`.
-- **Consola H2:** `http://localhost:8080/h2-console` → JDBC URL `jdbc:h2:mem:roomdb`, usuario `sa`, sin contraseña.
-
-### Tests
-```bash
+./gradlew bootRun     # Windows: gradlew.bat bootRun
 ./gradlew test
 ```
 
-### Con PostgreSQL (opcional)
+La API queda en `http://localhost:8080`, con H2 en memoria (no hay que instalar nada). Flyway crea el esquema al arrancar.
+
+- **Credenciales para crear/cancelar (HTTP Basic):** `admin` / `admin123` (configurables con `APP_USER` y `APP_PASSWORD`).
+- **Swagger UI:** `http://localhost:8080/swagger-ui.html` → botón **Authorize** para los endpoints protegidos.
+- **Consola H2:** `http://localhost:8080/h2-console` → JDBC URL `jdbc:h2:mem:roomdb`, usuario `sa`, sin contraseña.
+
+**Con PostgreSQL (opcional):**
 ```bash
 docker compose up -d
 ./gradlew bootRun --args='--spring.profiles.active=postgres'
 ```
-El contenedor expone PostgreSQL en el puerto **5433** (para no chocar con un PostgreSQL local en el 5432). La conexión se puede ajustar con `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`. Para borrar el contenedor y sus datos: `docker compose down -v`.
+El contenedor usa el puerto **5433** para no chocar con un PostgreSQL local.
 
 ---
 
@@ -41,36 +35,31 @@ El contenedor expone PostgreSQL en el puerto **5433** (para no chocar con un Pos
 | Método | Ruta | Auth | Respuestas |
 |---|---|---|---|
 | `POST` | `/api/rooms` | Sí | 201 · 400 · 401 · 409 (nombre duplicado) |
-| `GET` | `/api/rooms?page=&size=&sort=` | No | 200 |
+| `GET` | `/api/rooms` | No | 200 |
 | `GET` | `/api/rooms/{id}` | No | 200 · 404 |
 | `POST` | `/api/reservations` | Sí | 201 · 400 · 401 · 404 (sala inexistente) · **409 (sala ocupada)** |
 | `GET` | `/api/reservations?roomId=&date=&zone=&status=&page=&size=&sort=` | No | 200 · 400 |
 | `GET` | `/api/reservations/{id}` | No | 200 · 404 |
 | `DELETE` | `/api/reservations/{id}` | Sí | 204 · 401 · 404 · 409 (ya cancelada) |
 
-### Ejemplos
-#### Crear una sala
 ```bash
+# Crear una sala
 curl -u admin:admin123 -X POST localhost:8080/api/rooms \
   -H 'Content-Type: application/json' -d '{"name":"Sala Andes","capacity":8}'
-```
-#### Reservar (las fechas deben llevar zona horaria: Z o un offset como -03:00)
-```bash
+
+# Reservar (las fechas llevan zona horaria: Z o un offset como -03:00)
 curl -u admin:admin123 -X POST localhost:8080/api/reservations \
   -H 'Content-Type: application/json' \
   -d '{"roomId":1,"responsible":"Ana","start":"2030-01-15T10:00:00-03:00","end":"2030-01-15T11:00:00-03:00"}'
-```
-#### Listar reservas de la sala 1 del 15/01/2030 (día en hora de Buenos Aires), de 10 en 10
-```bash
-curl 'localhost:8080/api/reservations?roomId=1&date=2030-01-15&zone=America/Argentina/Buenos_Aires&size=10&sort=start,desc'
-```
-#### Cancelar
-```bash
+
+# Reservas de la sala 1 el 15/01/2030 (en hora de Buenos Aires)
+curl 'localhost:8080/api/reservations?roomId=1&date=2030-01-15&zone=America/Argentina/Buenos_Aires'
+
+# Cancelar
 curl -u admin:admin123 -X DELETE localhost:8080/api/reservations/1
 ```
 
-### Formato de errores
-Todos los errores siguen **RFC 9457 (Problem Details)**, `Content-Type: application/problem+json`. Los de validación incluyen el detalle por campo:
+Los errores siguen el formato estándar **RFC 9457 (Problem Details)**. Los de validación indican cada campo:
 ```json
 {
   "title": "Validation failed",
@@ -82,13 +71,6 @@ Todos los errores siguen **RFC 9457 (Problem Details)**, `Content-Type: applicat
   ]
 }
 ```
-```json
-{
-  "title": "Conflict",
-  "status": 409,
-  "detail": "Room 'Sala Andes' is not available between 2030-01-15T13:30:00Z and 2030-01-15T14:30:00Z: it overlaps an existing reservation"
-}
-```
 
 ---
 
@@ -96,106 +78,75 @@ Todos los errores siguen **RFC 9457 (Problem Details)**, `Content-Type: applicat
 
 | Tema | Decisión | Por qué |
 |---|---|---|
-| **Base de datos** | H2 en memoria (modo PostgreSQL) por defecto; PostgreSQL con el perfil `postgres` + `compose.yaml`. | Quien revise la prueba la arranca con un solo comando. Las migraciones usan SQL estándar (`GENERATED BY DEFAULT AS IDENTITY`, no `BIGSERIAL`) y sirven para ambas bases. |
-| **Esquema** | Lo gestiona Flyway; Hibernate solo lo valida (`ddl-auto=validate`). | El esquema está versionado y cualquier desajuste entre entidades y tablas falla al arrancar, no en producción. |
-| **Solapamiento** | Intervalos semiabiertos `[start, end)`: hay conflicto si `nuevo.start < existente.end AND nuevo.end > existente.start`. Solo cuentan las reservas `ACTIVE`. | Una reunión de 10 a 11 y otra de 11 a 12 no chocan. |
-| **Concurrencia** | Antes de comprobar solapamientos se bloquea la fila de la sala (`SELECT … FOR UPDATE`, `@Lock(PESSIMISTIC_WRITE)`). | Sin bloqueo, dos peticiones simultáneas pueden ver el hueco libre y reservarlo las dos. Con él, las reservas de una misma sala se serializan y las de salas distintas no se bloquean. Funciona igual en H2 y PostgreSQL. |
-| **Defensa en profundidad (PostgreSQL)** | Restricción `EXCLUDE USING gist (room_id WITH =, tstzrange(start_time, end_time, '[)') WITH &&) WHERE (status = 'ACTIVE')`. | La base de datos impide solapamientos incluso si alguien escribe sin pasar por la API. Si salta, el servicio lo traduce a 409. H2 no soporta este tipo de restricción, por eso es una migración solo para PostgreSQL (`db/postgresql/V2_1__…`). |
-| **Fechas** | La entrada es `OffsetDateTime` (zona obligatoria); se guarda como `Instant` en `timestamp with time zone`; la salida es siempre UTC. | Una fecha sin zona es ambigua, así que se rechaza con 400. |
-| **Filtro por fecha** | `date` devuelve las reservas que **se solapan** con ese día (no solo las que empiezan ese día), interpretado en UTC o en la zona del parámetro opcional `zone`. | Una reserva de 23:00 a 01:00 aparece en ambos días. Con usuarios en UTC-3, filtrar el día en UTC daría resultados confusos. |
-| **Cancelación** | Borrado lógico (`status = CANCELLED`) vía `DELETE` → 204. Cancelar dos veces → 409. | Se conserva el historial y el hueco queda libre. El 409 avisa al cliente de que su petición no tuvo efecto (la alternativa razonable sería hacerlo idempotente con 204). |
-| **Autenticación** | HTTP Basic, sin estado, con un usuario en memoria. `GET /api/**` es público; todo lo demás requiere credenciales. CSRF desactivado. El 401 se delega desde el filtro de seguridad al manejo de errores de Spring MVC. | Es lo más simple que cumple el requisito. Al no haber sesión ni cookies, CSRF no aplica. Al delegar, el 401 sale con el mismo formato y serializador que el resto de errores. El manejador genérico de errores relanza `AccessDeniedException` para que Spring Security decida entre 401 y 403. |
-| **Errores de integridad de la base** | Solo se traducen a 409 las violaciones de restricciones conocidas (`uk_rooms_name`, `ex_reservations_no_overlap`), identificadas por su nombre. Cualquier otra se relanza y acaba en 500, registrada en el log. | Traducir *cualquier* violación a "nombre duplicado" o "sala ocupada" escondería bugs reales detrás de un 409 con un mensaje falso. |
-| **Responsable** | Campo de texto en la reserva. | Es lo que pide el enunciado. Con un sistema de usuarios real lo tomaría del usuario autenticado. |
-| **Validaciones** | Bean Validation en los DTOs (`record`) + una restricción propia `@ValidReservationPeriod` (fin después del inicio, máximo 8 h) que reporta el error en el campo `end`. Además `start` debe ser futuro. | Mensajes claros por campo. Las reglas que cruzan campos devuelven también un error de campo y no un error genérico del objeto. |
-| **Paginación** | `Pageable` + `PagedModel` (`{content, page:{size, number, totalElements, totalPages}}`), tamaño máximo 100. Se puede ordenar con los nombres del JSON (`start`, `end`, `roomName`). | JSON estable en lugar de serializar `PageImpl`. Ordenar por un campo inexistente da 400, no 500. |
-| **N+1** | `@EntityGraph(attributePaths = "room")` en la consulta del listado. | Cada reserva muestra el nombre de su sala; sin esto serían 1 + N consultas. Hay un test que cuenta las sentencias SQL. |
-| **Documentación (OpenAPI)** | springdoc-openapi genera la spec a partir del código; los controladores solo declaran qué códigos devuelve cada operación. Un `OpenApiCustomizer` añade lo común: el cuerpo Problem Details en todos los errores y el 401 en las operaciones protegidas. La spec y Swagger UI son públicos. | La documentación no se desincroniza del código, y un test verifica que la spec coincide con el comportamiento real (qué operaciones piden credenciales, qué códigos devuelven). |
-| **Estructura** | Paquetes por funcionalidad (`room`, `reservation`) con capas controller → service → repository, DTOs separados de las entidades. | Simple de leer y de defender. |
+| **Base de datos** | H2 por defecto; PostgreSQL con el perfil `postgres`. Mismas migraciones de Flyway para ambas. | Se arranca con un solo comando, sin instalar nada. |
+| **Solapamiento** | Intervalos `[start, end)`. Solo cuentan las reservas activas. | Una reunión de 10 a 11 y otra de 11 a 12 no chocan. |
+| **Concurrencia** | Al reservar se bloquea la fila de la sala (`SELECT … FOR UPDATE`) antes de comprobar solapamientos. En PostgreSQL, además, una restricción en la base impide solapamientos. | Sin bloqueo, dos peticiones simultáneas podrían reservar el mismo hueco. |
+| **Fechas** | La entrada exige zona horaria; la salida es siempre UTC. El filtro `date` devuelve las reservas que se solapan con ese día, en UTC o en la zona indicada en `zone`. | Una fecha sin zona es ambigua. Una reserva de 23:00 a 01:00 aparece en ambos días. |
+| **Cancelación** | Borrado lógico (estado `CANCELLED`), `DELETE` → 204. Cancelar dos veces → 409. | Se conserva el historial y el hueco queda libre. La alternativa sería hacerlo idempotente (204). |
+| **Autenticación** | HTTP Basic sin sesión, con un usuario en memoria. Los `GET` son públicos. | Es lo más simple que cumple el requisito. Sin sesión ni cookies, CSRF no aplica y está desactivado. |
+| **Errores** | Todos en Problem Details, incluido el 401. Solo las restricciones de base conocidas (nombre duplicado, solapamiento) se convierten en 409; el resto es un 500. | Un 409 genérico escondería errores reales detrás de un mensaje falso. |
+
+Además: paginación con tamaño máximo de 100, el listado trae cada sala en la misma consulta (sin N+1) y la documentación OpenAPI se genera desde el código.
 
 ---
 
 ## Tests
 
-85 tests (`./gradlew test`):
+85 tests: unitarios de los servicios, de la capa web (controladores, seguridad y formato de errores), de repositorio sobre el esquema real de Flyway, y de integración end-to-end con MockMvc sin nada simulado.
 
-| Tipo | Clases | Qué cubren |
-|---|---|---|
-| **Integración** (`@SpringBootTest` + MockMvc, nada simulado) | `ReservationApiIntegrationTest` | Ciclo completo (crear, 409 por solapamiento, reservas contiguas permitidas, listado filtrado y paginado, cancelar, volver a reservar), seguridad real, errores 400/404 y **8 hilos reservando el mismo hueco a la vez → exactamente 1 éxito**. |
-| Repositorio (`@DataJpaTest` sobre el esquema de Flyway) | `ReservationRepositoryTest`, `ReservationSearchTest`, `ReservationCancellationTest`, `ConstraintViolationsTest` | Casos límite del solapamiento, filtros, zona horaria, paginación, ausencia de N+1, persistencia de la cancelación, identificación de la restricción violada con la base real. |
-| Capa web (`@WebMvcTest`) | `RoomControllerTest`, `ReservationControllerTest`, `SecurityConfigTest`, `AccessDeniedHandlingTest` | Códigos HTTP, forma del JSON, validaciones, formato de errores (el 401 con los mismos campos que el resto), reglas de acceso, 401/403 ante `AccessDeniedException`. |
-| Documentación (`@SpringBootTest`) | `OpenApiDocumentationTest` | La spec es pública, marca como protegidas solo las escrituras, documenta los códigos reales y el formato de error, y Swagger UI carga. |
-| Unitarios (Mockito) | `RoomServiceTest`, `ReservationServiceTest` | Reglas de negocio de los servicios. |
+El test de integración incluye 8 hilos que reservan el mismo hueco a la vez: exactamente uno lo consigue. Se comprobó que el test sirve quitando temporalmente el bloqueo de la sala: en ese caso los 8 reservaban.
 
-Los tests de seguridad usan sus propias credenciales (`test-user` / `test-secret`) y las leen de la configuración; no dependen de las credenciales por defecto.
+La suite corre contra H2. PostgreSQL se verificó manualmente: migraciones, flujo completo con `curl`, peticiones simultáneas y la restricción contra solapamientos.
 
-Para comprobar que algunos tests de verdad detectan el problema que cubren, quité la corrección temporalmente:
-- Sin el bloqueo de la sala, el test de concurrencia falló 3 de 3 veces con `expected: 1 but was: 8` (los 8 hilos reservaron el mismo hueco).
-- Sin el relanzamiento de `AccessDeniedException`, `AccessDeniedHandlingTest` devolvía 500 en lugar de 401 y 403.
-
-Los tests automáticos se ejecutan contra H2. El perfil de PostgreSQL lo verifiqué manualmente: migraciones, flujo completo con `curl`, 8 peticiones HTTP simultáneas (1 × 201, 7 × 409) un `INSERT` solapado directo en la base, rechazado por la restricción de exclusión, y que el nombre de las restricciones (`uk_rooms_name` y `ex_reservations_no_overlap`) se identifica correctamente a partir de los errores reales de PostgreSQL.
+<!-- TODO (Alexei): las dos comprobaciones anteriores las hizo la IA. Si las reproduces tú, puedes pasarlas a primera persona ("comprobé…"). -->
 
 ---
 
 ## Qué haría con más tiempo
 
-- **Testcontainers** para correr la suite de integración también contra PostgreSQL en CI, en lugar de verificarlo a mano.
-- **Puntos de la revisión crítica que no apliqué** (ver "Cómo usé la IA"):
-  - **Reloj inyectable (`Clock`)**: `@Future` y `createdAt` usan el reloj del sistema. Además, varios tests usan fechas fijas en 2030 que deben ser futuras, así que **fallarán a partir de esa fecha**. La solución es inyectar un `Clock` y fijarlo en los tests.
-  - **URL de H2 duplicada** en el test de integración (para que tenga su propia base): separarla en propiedades para no repetir las opciones de H2.
-  - **Consola H2**: sus reglas de seguridad se aplican en todos los perfiles; deberían activarse solo cuando la consola está habilitada.
-  - **`@ResponseStatus(CREATED)`** en los `create`, añadido solo para que OpenAPI muestre 201 aunque `ResponseEntity.created` ya lo devuelve. Se podría documentar con `@ApiResponse` y quitarlo.
-- **JWT con roles**: que solo el responsable o un administrador pueda cancelar, y tomar `responsible` del usuario autenticado. Usuarios en base de datos con contraseñas en BCrypt.
-- **Reglas de negocio adicionales**: no permitir cancelar reservas ya terminadas, horario laboral por sala, capacidad vs. asistentes, edición/reprogramación de reservas (`PATCH`).
-- **CI con GitHub Actions** (build + tests + análisis estático) y una imagen Docker de la aplicación.
-- **Observabilidad**: Actuator (health/metrics), logs estructurados con un id de correlación por petición.
-- **Idempotencia en la creación** (cabecera `Idempotency-Key`) para que un cliente pueda reintentar sin crear reservas duplicadas.
-- **Consultas tipadas**: las Specifications referencian hoy los atributos como texto (`"startTime"`), por lo que un renombrado en la entidad no se detecta al compilar, sino al ejecutar la consulta. Como primer paso incorporaría el metamodelo estático de JPA (`hibernate-processor`) para que el compilador lo detecte. Si las consultas aumentaran en complejidad (muchos filtros combinables, joins, proyecciones), evaluaría QueryDSL —en su fork mantenido por OpenFeign— por su API fluida y tipada.
+- **Testcontainers**, para correr la suite también contra PostgreSQL en CI en lugar de verificarlo a mano.
+- **Reloj inyectable (`Clock`)**: la validación de "fecha futura" usa el reloj del sistema y varios tests usan fechas fijas de 2030, así que **fallarán a partir de esa fecha**.
+- **JWT con roles**: que solo el responsable o un administrador pueda cancelar, y tomar el responsable del usuario autenticado.
+- **Más reglas de negocio**: no permitir cancelar reservas ya terminadas, poder modificar una reserva.
+- **Consultas tipadas**: los filtros referencian los campos como texto, así que un cambio de nombre solo falla al ejecutar. Usaría el metamodelo estático de JPA y, si las consultas se complicaran, evaluaría QueryDSL (fork de OpenFeign).
+- **CI con GitHub Actions** y una imagen Docker de la aplicación.
+- **Detalles pendientes de la revisión**: activar las reglas de la consola H2 solo cuando está habilitada, y quitar configuración duplicada en los tests.
 
 ---
 
 ## Cómo usé la IA
 
-Usé **Claude Code** (asistente de programación en la terminal) durante todo el desarrollo.
+Usé **Claude Code** durante todo el desarrollo.
 
 **Qué le pedí**
-1. Una propuesta de diseño y un plan de implementación a partir del enunciado: decisiones técnicas, modelo de datos, endpoints, estrategia de tests y un plan por pasos de unas 3 horas con un commit por paso.
-2. Implementar el plan paso a paso: migraciones → entidades y repositorios → servicio y controlador de salas → manejo global de errores → creación de reservas → listado → cancelación → seguridad → test de integración → perfil PostgreSQL → este README. Después de cada paso revisaba el código y hacía yo el commit.
+1. Una propuesta de diseño y un plan de implementación por pasos a partir del enunciado.
+2. Implementar el plan paso a paso. Los commits los hice yo después de cada paso.
 3. Añadir OpenAPI / Swagger UI como extra.
-4. Una **revisión crítica de su propio código**: que me señalara qué había propuesto mal o mejorable. De esa lista elegí qué corregir (ver abajo).
+4. Una revisión crítica de su propio código, para decidir qué corregir.
 
 **Qué acepté**
-- El plan general y las decisiones de la tabla anterior (H2 por defecto, HTTP Basic, bloqueo pesimista, borrado lógico, Problem Details, `PagedModel`).
-- La mayor parte del código generado, después de revisarlo y de que los tests pasaran en cada paso.
+- El plan y las decisiones técnicas (H2 por defecto, HTTP Basic, bloqueo pesimista, borrado lógico, Problem Details).
+- La mayor parte del código, con los tests en verde en cada paso.
 
-**Qué se corrigió durante el desarrollo** (detectado por la compilación, los tests o las pruebas manuales):
-- **Cambios de Spring Boot 4 / Spring Data 4**: `PropertyReferenceException` cambió de paquete (`org.springframework.data.core`) y la primera compilación falló. Además el JSON ahora lo procesa Jackson 3 (`tools.jackson.*`), no `com.fasterxml.*`.
-- **Mensaje de error de fechas**: con una fecha mal formada, la API devolvía un "JSON inválido" genérico porque el manejador miraba solo la causa raíz (`DateTimeParseException`, que no sabe qué campo falló). Un test lo detectó y se cambió para recorrer la cadena de causas y nombrar el campo.
-- **Tests que se contaminaban entre sí**: al añadir el test de integración (que hace commits reales) fallaron 3 tests de repositorio, porque todos los contextos de Spring compartían la misma base H2 en memoria. El test de integración pasó a usar su propia base.
-- **Mensaje del 409**: decía "already booked between …" mostrando el intervalo *pedido*, no el ocupado. Se reescribió como "is not available between …: it overlaps an existing reservation".
-- **Test de concurrencia**: no di por bueno que el test probara algo; se quitó el bloqueo temporalmente para ver que fallaba.
-- **OpenAPI (extra añadido al final)**: la spec generada por defecto era incorrecta en dos puntos que detectó el test de documentación: (1) springdoc ponía como cuerpo de *todas* las respuestas el tipo de retorno del método, así que el 409 aparecía devolviendo una `ReservationResponse`; se corrigió para que los errores usen el esquema Problem Details. (2) El parámetro `zone` no aparecía, porque springdoc oculta los `ZoneId` (Spring MVC puede resolverlos desde la petición); se le indicó que no lo ignore. También se eligió springdoc 3.2.0 en vez de la 3.2.1 (publicada hacía 3 días) y se comprobó que funciona con Spring Boot 4.2.
+**Qué se corrigió en el camino** (detectado por los tests)
+- Los tests se contaminaban entre sí porque compartían la misma base H2 en memoria; el test de integración pasó a usar la suya.
+- Con una fecha mal escrita, el error no indicaba qué campo fallaba.
+- La documentación OpenAPI generada por defecto mostraba los errores con un formato incorrecto.
 
-**Revisión crítica del código generado**
+**Revisión crítica**
 
-Le pedí a la IA que revisara su propio código y me listara fallos y puntos mejorables. Añadí uno que había visto yo: las credenciales `admin` / `admin123` estaban escritas a mano en los tests. De la lista decidí corregir estos (la IA los implementó y yo los revisé):
+De la lista que me dio la IA, más un punto que vi yo (las credenciales escritas a mano en los tests), decidí corregir:
+- **Credenciales en los tests**: ahora los tests usan las suyas y las leen de la configuración.
+- **Errores de base disfrazados de 409**: cualquier error de integridad se respondía como "nombre duplicado" o "sala ocupada". Ahora solo esos dos casos dan 409. La primera versión de esta corrección fallaba con PostgreSQL y apareció al probarla contra la base real.
+- **Formato del 401**: no coincidía con el resto de errores.
+- **Manejador de errores genérico**: habría convertido un "acceso denegado" en un 500.
 
-- **Credenciales en los tests**: los tests de seguridad tenían escritas las credenciales por defecto. Ahora fijan las suyas y las leen de la configuración, así que además demuestran que la seguridad usa `spring.security.user.*`.
-- **Errores de integridad disfrazados de 409**: `RoomService` convertía *cualquier* `DataIntegrityViolationException` en "ya existe una sala con ese nombre", y `ReservationService` en "la sala no está disponible". Una sala con capacidad 0 que llegara a la base respondía "nombre duplicado". Ahora se identifica la restricción por su nombre y el resto se relanza.
-  - **La primera versión de esta corrección tenía un bug en PostgreSQL**, que salió al probarla contra PostgreSQL real: Hibernate no extrae el nombre de las restricciones de exclusión (devuelve `null`), así que un solapamiento detectado por la base habría pasado de 409 a 500. Se resolvió leyendo el nombre del mensaje del driver cuando Hibernate no lo da. También hubo que comparar por subcadena porque H2 añade un sufijo al nombre (`uk_rooms_name_INDEX_6`).
-- **Formato del 401**: el JSON del 401 estaba escrito a mano y no coincidía con el resto de errores (incluía un `"type"` que los demás no tenían). Ahora el filtro de seguridad delega en el manejo de errores de Spring MVC y un test compara los campos del 401 con los de un 404.
-- **Manejador genérico que se tragaba excepciones**: `@ExceptionHandler(Exception.class)` habría convertido en 500 un `AccessDeniedException` (por ejemplo, de un futuro `@PreAuthorize`). Ahora lo relanza para que Spring Security responda 401 o 403.
+Los demás puntos están en "Qué haría con más tiempo".
 
-Los puntos que decidí no corregir por tiempo están en "Qué haría con más tiempo".
-
-<!-- TODO (Alexei): completar con lo que revisaste o cambiaste tú personalmente, por ejemplo:
-- ajustes que hiciste a mano (p. ej. los comentarios del validador de periodo),
-- sugerencias de la IA que rechazaste o modificaste y por qué,
-- decisiones que tomaste tú (p. ej. hacer los commits a mano, incluir el perfil PostgreSQL),
-- por qué elegiste esas correcciones de la revisión y no las otras. -->
+<!-- TODO (Alexei): añade aquí con tus palabras lo que revisaste o decidiste tú, y por qué elegiste esas correcciones. Si no revisaste el código de cada paso, ajusta "Qué acepté". -->
 
 ---
 
 ## Tiempo invertido
 
-<!-- TODO (Alexei): indicar el tiempo real (el plan estimaba ~3 h). -->
+<!-- TODO (Alexei): indicar el tiempo real. -->
