@@ -7,10 +7,12 @@ import com.aom.room_reservation.room.RoomService;
 import com.aom.room_reservation.room.dto.RoomResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -30,12 +32,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Access rules: reads are public, writes need valid HTTP Basic credentials
- * (the real ones from application.properties, not a mocked user).
+ * Access rules: reads are public, writes need valid HTTP Basic credentials.
+ * <p>
+ * The test sets its own credentials and reads them back from the configuration instead of
+ * hard-coding the dev defaults, so it also proves that security uses spring.security.user.*.
  */
 @WebMvcTest({RoomController.class, ReservationController.class})
 @Import(SecurityConfig.class)
+@TestPropertySource(properties = {
+        "spring.security.user.name=test-user",
+        "spring.security.user.password=test-secret"})
 class SecurityConfigTest {
+
+    @Value("${spring.security.user.name}")
+    private String username;
+
+    @Value("${spring.security.user.password}")
+    private String password;
 
     private static final String ROOM_JSON = """
             {"name": "Sala Andes", "capacity": 8}
@@ -73,7 +86,7 @@ class SecurityConfigTest {
 
     @Test
     void createWithWrongPasswordReturns401() throws Exception {
-        mockMvc.perform(post("/api/rooms").with(httpBasic("admin", "wrong"))
+        mockMvc.perform(post("/api/rooms").with(httpBasic(username, password + "-wrong"))
                         .contentType(MediaType.APPLICATION_JSON).content(ROOM_JSON))
                 .andExpect(status().isUnauthorized());
 
@@ -85,7 +98,7 @@ class SecurityConfigTest {
         when(roomService.create(any())).thenReturn(
                 new RoomResponse(1L, "Sala Andes", 8, Instant.parse("2026-11-23T12:00:00Z")));
 
-        mockMvc.perform(post("/api/rooms").with(httpBasic("admin", "admin123"))
+        mockMvc.perform(post("/api/rooms").with(httpBasic(username, password))
                         .contentType(MediaType.APPLICATION_JSON).content(ROOM_JSON))
                 .andExpect(status().isCreated())
                 .andExpect(header().doesNotExist("Set-Cookie"));
@@ -101,7 +114,7 @@ class SecurityConfigTest {
 
     @Test
     void cancelWithValidCredentialsReturns204() throws Exception {
-        mockMvc.perform(delete("/api/reservations/1").with(httpBasic("admin", "admin123")))
+        mockMvc.perform(delete("/api/reservations/1").with(httpBasic(username, password)))
                 .andExpect(status().isNoContent());
     }
 

@@ -52,7 +52,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(SecurityConfig.class)
 class ReservationControllerTest {
 
-    private static final RequestPostProcessor ADMIN = user("admin");
+    private static final RequestPostProcessor AUTHENTICATED = user("test-user");
 
     @Autowired
     private MockMvc mockMvc;
@@ -61,7 +61,7 @@ class ReservationControllerTest {
     private ReservationService reservationService;
 
     private ResultActions postReservation(String json) throws Exception {
-        return mockMvc.perform(post("/api/reservations").with(ADMIN)
+        return mockMvc.perform(post("/api/reservations").with(AUTHENTICATED)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json));
     }
@@ -249,7 +249,7 @@ class ReservationControllerTest {
 
     @Test
     void cancelReturns204WithoutBody() throws Exception {
-        mockMvc.perform(delete("/api/reservations/5").with(ADMIN))
+        mockMvc.perform(delete("/api/reservations/5").with(AUTHENTICATED))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
 
@@ -260,7 +260,7 @@ class ReservationControllerTest {
     void cancelUnknownReservationReturns404() throws Exception {
         doThrow(new ResourceNotFoundException("Reservation", 99L)).when(reservationService).cancel(99L);
 
-        mockMvc.perform(delete("/api/reservations/99").with(ADMIN))
+        mockMvc.perform(delete("/api/reservations/99").with(AUTHENTICATED))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.detail").value("Reservation with id 99 not found"));
     }
@@ -269,7 +269,7 @@ class ReservationControllerTest {
     void cancelAlreadyCancelledReservationReturns409() throws Exception {
         doThrow(new ConflictException("Reservation 5 is already cancelled")).when(reservationService).cancel(5L);
 
-        mockMvc.perform(delete("/api/reservations/5").with(ADMIN))
+        mockMvc.perform(delete("/api/reservations/5").with(AUTHENTICATED))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail").value("Reservation 5 is already cancelled"));
     }

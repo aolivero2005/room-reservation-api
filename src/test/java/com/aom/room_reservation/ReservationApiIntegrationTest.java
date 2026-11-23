@@ -8,6 +8,7 @@ import com.aom.room_reservation.reservation.dto.CreateReservationRequest;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
@@ -46,12 +47,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Uses its own in-memory database: these tests really commit, and the cached Spring context keeps the
  * connection pool (and so the H2 database) alive, which would leak rows into the @DataJpaTest classes.
  */
-@SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:integration-${random.uuid};"
-        + "MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH")
+@SpringBootTest(properties = {
+        "spring.datasource.url=jdbc:h2:mem:integration-${random.uuid};"
+                + "MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH",
+        // own credentials, read back below: no dependency on the dev defaults
+        "spring.security.user.name=test-user",
+        "spring.security.user.password=test-secret"})
 @AutoConfigureMockMvc
 class ReservationApiIntegrationTest {
 
-    private static final RequestPostProcessor ADMIN = httpBasic("admin", "admin123");
+    @Value("${spring.security.user.name}")
+    private String username;
+
+    @Value("${spring.security.user.password}")
+    private String password;
 
     @Autowired
     private MockMvc mockMvc;
@@ -94,12 +103,12 @@ class ReservationApiIntegrationTest {
                 .andExpect(jsonPath("$.page.totalPages").value(2));
 
         // 5. cancel -> 204, visible as CANCELLED, cancelling again -> 409
-        mockMvc.perform(delete("/api/reservations/{id}", reservationId).with(ADMIN))
+        mockMvc.perform(delete("/api/reservations/{id}", reservationId).with(authenticated()))
                 .andExpect(status().isNoContent());
         mockMvc.perform(get("/api/reservations/{id}", reservationId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CANCELLED"));
-        mockMvc.perform(delete("/api/reservations/{id}", reservationId).with(ADMIN))
+        mockMvc.perform(delete("/api/reservations/{id}", reservationId).with(authenticated()))
                 .andExpect(status().isConflict());
 
         // 6. the freed slot can be booked again
@@ -195,16 +204,20 @@ class ReservationApiIntegrationTest {
 
     // ---------- helpers ----------
 
+    private RequestPostProcessor authenticated() {
+        return httpBasic(username, password);
+    }
+
     private long createRoom() throws Exception {
         String name = "Sala " + UUID.randomUUID().toString().substring(0, 8);
-        return idOf(mockMvc.perform(post("/api/rooms").with(ADMIN)
+        return idOf(mockMvc.perform(post("/api/rooms").with(authenticated())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\": \"" + name + "\", \"capacity\": 6}"))
                 .andExpect(status().isCreated()));
     }
 
     private ResultActions createReservation(long roomId, String responsible, String start, String end) throws Exception {
-        return mockMvc.perform(post("/api/reservations").with(ADMIN)
+        return mockMvc.perform(post("/api/reservations").with(authenticated())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(reservationJson(roomId, responsible, start, end)));
     }

@@ -41,7 +41,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(SecurityConfig.class)
 class RoomControllerTest {
 
-    private static final RequestPostProcessor ADMIN = user("admin");
+    private static final RequestPostProcessor AUTHENTICATED = user("test-user");
 
     private static final Instant CREATED_AT = Instant.parse("2026-11-23T12:00:00Z");
 
@@ -56,7 +56,7 @@ class RoomControllerTest {
         when(roomService.create(any(CreateRoomRequest.class)))
                 .thenReturn(new RoomResponse(1L, "Sala Andes", 8, CREATED_AT));
 
-        mockMvc.perform(post("/api/rooms").with(ADMIN)
+        mockMvc.perform(post("/api/rooms").with(AUTHENTICATED)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "Sala Andes", "capacity": 8}
@@ -71,7 +71,7 @@ class RoomControllerTest {
 
     @Test
     void createWithInvalidBodyReturns400WithFieldErrorsAndDoesNotCallService() throws Exception {
-        mockMvc.perform(post("/api/rooms").with(ADMIN)
+        mockMvc.perform(post("/api/rooms").with(AUTHENTICATED)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "", "capacity": 0}
@@ -90,7 +90,7 @@ class RoomControllerTest {
 
     @Test
     void createWithMissingCapacityReportsItAsRequired() throws Exception {
-        mockMvc.perform(post("/api/rooms").with(ADMIN)
+        mockMvc.perform(post("/api/rooms").with(AUTHENTICATED)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "Sala Andes"}
@@ -102,7 +102,7 @@ class RoomControllerTest {
 
     @Test
     void createWithMalformedJsonReturns400() throws Exception {
-        mockMvc.perform(post("/api/rooms").with(ADMIN)
+        mockMvc.perform(post("/api/rooms").with(AUTHENTICATED)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\": "))
                 .andExpect(status().isBadRequest())
@@ -111,7 +111,7 @@ class RoomControllerTest {
 
     @Test
     void createWithWrongFieldTypeNamesTheField() throws Exception {
-        mockMvc.perform(post("/api/rooms").with(ADMIN)
+        mockMvc.perform(post("/api/rooms").with(AUTHENTICATED)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "Sala Andes", "capacity": "eight"}
@@ -125,7 +125,7 @@ class RoomControllerTest {
         when(roomService.create(any(CreateRoomRequest.class)))
                 .thenThrow(new ConflictException("A room named 'Sala Andes' already exists"));
 
-        mockMvc.perform(post("/api/rooms").with(ADMIN)
+        mockMvc.perform(post("/api/rooms").with(AUTHENTICATED)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "Sala Andes", "capacity": 8}
