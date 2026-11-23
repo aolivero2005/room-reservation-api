@@ -1,5 +1,9 @@
 package com.aom.room_reservation.reservation;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -9,6 +13,14 @@ import java.time.Instant;
 
 public interface ReservationRepository
         extends JpaRepository<Reservation, Long>, JpaSpecificationExecutor<Reservation> {
+
+    /**
+     * Same as the inherited method, but fetches the room in the same query (join) because every
+     * listed reservation shows its room name. Without it: 1 query for the page + 1 per row (N+1).
+     */
+    @Override
+    @EntityGraph(attributePaths = "room")
+    Page<Reservation> findAll(Specification<Reservation> spec, Pageable pageable);
 
     /**
      * True if the room has an ACTIVE reservation overlapping [start, end).
