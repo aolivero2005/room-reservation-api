@@ -29,6 +29,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.GET, "/api/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll() // dev only, in-memory DB
+                        .requestMatchers(HttpMethod.GET, "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
+                        .permitAll() // OpenAPI spec and Swagger UI
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
                 .httpBasic(basic -> basic.authenticationEntryPoint(entryPoint))
