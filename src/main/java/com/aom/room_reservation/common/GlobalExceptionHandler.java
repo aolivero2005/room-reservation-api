@@ -19,6 +19,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 import tools.jackson.core.JacksonException;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -90,15 +91,26 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     protected ResponseEntity<Object> handleHttpMessageNotReadable(
             HttpMessageNotReadableException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
 
-        String detail = "Request body is missing or is not valid JSON";
-        if (ex.getMostSpecificCause() instanceof JacksonException jackson && !jackson.getPath().isEmpty()) {
-            String field = jackson.getPath().stream()
-                    .map(ref -> ref.getPropertyName() != null ? ref.getPropertyName() : "[" + ref.getIndex() + "]")
-                    .collect(Collectors.joining("."));
-            detail = "Field '" + field + "' has an invalid value or format";
-        }
+        String detail = findJacksonFieldPath(ex)
+                .map(field -> "Field '" + field + "' has an invalid value or format")
+                .orElse("Request body is missing or is not valid JSON");
         ProblemDetail body = problem(HttpStatus.BAD_REQUEST, "Malformed request", detail);
         return handleExceptionInternal(ex, body, headers, status, request);
+    }
+
+    /**
+     * Walks the cause chain looking for the Jackson exception that knows which field failed.
+     * Not just the root cause: for a bad date the root is a DateTimeParseException with no field info.
+     */
+    private static Optional<String> findJacksonFieldPath(Throwable ex) {
+        for (Throwable cause = ex; cause != null; cause = cause.getCause()) {
+            if (cause instanceof JacksonException jackson && !jackson.getPath().isEmpty()) {
+                return Optional.of(jackson.getPath().stream()
+                        .map(ref -> ref.getPropertyName() != null ? ref.getPropertyName() : "[" + ref.getIndex() + "]")
+                        .collect(Collectors.joining(".")));
+            }
+        }
+        return Optional.empty();
     }
 
     /** Path variable or query parameter of the wrong type (e.g. /api/rooms/abc, ?date=yesterday). */
