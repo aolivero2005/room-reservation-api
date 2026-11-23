@@ -150,6 +150,7 @@ Los tests automáticos se ejecutan contra H2. El perfil de PostgreSQL lo verifiq
 - **CI con GitHub Actions** (build + tests + análisis estático) y una imagen Docker de la aplicación.
 - **Observabilidad**: Actuator (health/metrics), logs estructurados con un id de correlación por petición.
 - **Idempotencia en la creación** (cabecera `Idempotency-Key`) para que un cliente pueda reintentar sin crear reservas duplicadas.
+- **Consultas tipadas**: las Specifications referencian hoy los atributos como texto (`"startTime"`), por lo que un renombrado en la entidad no se detecta al compilar, sino al ejecutar la consulta. Como primer paso incorporaría el metamodelo estático de JPA (`hibernate-processor`) para que el compilador lo detecte. Si las consultas aumentaran en complejidad (muchos filtros combinables, joins, proyecciones), evaluaría QueryDSL —en su fork mantenido por OpenFeign— por su API fluida y tipada.
 
 ---
 
