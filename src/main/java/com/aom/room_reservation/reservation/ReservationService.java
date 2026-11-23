@@ -1,6 +1,7 @@
 package com.aom.room_reservation.reservation;
 
 import com.aom.room_reservation.common.ConflictException;
+import com.aom.room_reservation.common.ConstraintViolations;
 import com.aom.room_reservation.common.ResourceNotFoundException;
 import com.aom.room_reservation.reservation.dto.CreateReservationRequest;
 import com.aom.room_reservation.reservation.dto.ReservationResponse;
@@ -18,6 +19,9 @@ import java.time.Instant;
 @Service
 @RequiredArgsConstructor
 public class ReservationService {
+
+    /** PostgreSQL-only exclusion constraint against overlapping ACTIVE reservations (V2_1 migration). */
+    static final String NO_OVERLAP_CONSTRAINT = "ex_reservations_no_overlap";
 
     private final ReservationRepository reservationRepository;
     private final RoomRepository roomRepository;
@@ -49,7 +53,10 @@ public class ReservationService {
                     new Reservation(room, request.responsible().trim(), start, end));
             return ReservationResponse.from(saved);
         } catch (DataIntegrityViolationException e) {
-            throw slotNotAvailable(room, start, end);
+            if (ConstraintViolations.isViolationOf(e, NO_OVERLAP_CONSTRAINT)) {
+                throw slotNotAvailable(room, start, end);
+            }
+            throw e; // any other violation is a bug: let it surface as a 500 (and be logged)
         }
     }
 

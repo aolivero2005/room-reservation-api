@@ -1,6 +1,7 @@
 package com.aom.room_reservation.room;
 
 import com.aom.room_reservation.common.ConflictException;
+import com.aom.room_reservation.common.ConstraintViolations;
 import com.aom.room_reservation.common.ResourceNotFoundException;
 import com.aom.room_reservation.room.dto.CreateRoomRequest;
 import com.aom.room_reservation.room.dto.RoomResponse;
@@ -14,6 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class RoomService {
+
+    /** Unique constraint on rooms.name (V1 migration). */
+    static final String UNIQUE_NAME_CONSTRAINT = "uk_rooms_name";
 
     private final RoomRepository roomRepository;
 
@@ -29,7 +33,10 @@ public class RoomService {
             Room saved = roomRepository.saveAndFlush(new Room(name, request.capacity()));
             return RoomResponse.from(saved);
         } catch (DataIntegrityViolationException e) {
-            throw duplicateName(name);
+            if (ConstraintViolations.isViolationOf(e, UNIQUE_NAME_CONSTRAINT)) {
+                throw duplicateName(name);
+            }
+            throw e; // any other violation is a bug: let it surface as a 500 (and be logged)
         }
     }
 

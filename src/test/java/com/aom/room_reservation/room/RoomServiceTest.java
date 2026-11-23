@@ -9,9 +9,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.hibernate.exception.ConstraintViolationException;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 
+import java.sql.SQLException;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -58,10 +60,26 @@ class RoomServiceTest {
     void translatesConcurrentDuplicateInsertToConflict() {
         when(roomRepository.existsByName("Sala Andes")).thenReturn(false);
         when(roomRepository.saveAndFlush(any(Room.class)))
-                .thenThrow(new DataIntegrityViolationException("uk_rooms_name"));
+                .thenThrow(violationOf("UK_ROOMS_NAME_INDEX_8")); // how H2 reports it
 
         assertThatThrownBy(() -> roomService.create(new CreateRoomRequest("Sala Andes", 8)))
                 .isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void otherIntegrityViolationsAreNotDisguisedAsDuplicateName() {
+        DataIntegrityViolationException capacityViolation = violationOf("chk_rooms_capacity");
+        when(roomRepository.existsByName("Sala Andes")).thenReturn(false);
+        when(roomRepository.saveAndFlush(any(Room.class))).thenThrow(capacityViolation);
+
+        assertThatThrownBy(() -> roomService.create(new CreateRoomRequest("Sala Andes", 8)))
+                .isSameAs(capacityViolation);
+    }
+
+    /** Same shape Spring produces: DataIntegrityViolationException caused by Hibernate's, which names the constraint. */
+    private static DataIntegrityViolationException violationOf(String constraintName) {
+        return new DataIntegrityViolationException("could not execute statement",
+                new ConstraintViolationException("constraint violated", new SQLException(), constraintName));
     }
 
     @Test

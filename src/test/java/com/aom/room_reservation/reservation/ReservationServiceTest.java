@@ -9,12 +9,14 @@ import com.aom.room_reservation.room.RoomRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.hibernate.exception.ConstraintViolationException;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Optional;
@@ -112,12 +114,28 @@ class ReservationServiceTest {
         // e.g. the PostgreSQL exclusion constraint fires for a write the overlap check did not see
         when(roomRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(room));
         when(reservationRepository.saveAndFlush(any(Reservation.class)))
-                .thenThrow(new DataIntegrityViolationException("ex_reservations_no_overlap"));
+                .thenThrow(violationOf("ex_reservations_no_overlap"));
 
         assertThatThrownBy(() -> reservationService.create(
                 new CreateReservationRequest(1L, "Ana", START, END)))
                 .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("overlaps an existing reservation");
+    }
+
+    @Test
+    void otherIntegrityViolationsAreNotDisguisedAsOverlap() {
+        DataIntegrityViolationException foreignKeyViolation = violationOf("fk_reservations_room");
+        when(roomRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(room));
+        when(reservationRepository.saveAndFlush(any(Reservation.class))).thenThrow(foreignKeyViolation);
+
+        assertThatThrownBy(() -> reservationService.create(
+                new CreateReservationRequest(1L, "Ana", START, END)))
+                .isSameAs(foreignKeyViolation);
+    }
+
+    private static DataIntegrityViolationException violationOf(String constraintName) {
+        return new DataIntegrityViolationException("could not execute statement",
+                new ConstraintViolationException("constraint violated", new SQLException(), constraintName));
     }
 
     // ---------- cancel ----------
