@@ -97,9 +97,6 @@ Además: paginación con tamaño máximo de 100, el listado trae cada sala en la
 El test de integración incluye 8 hilos que reservan el mismo hueco a la vez: exactamente uno lo consigue. Se comprobó que el test sirve quitando temporalmente el bloqueo de la sala: en ese caso los 8 reservaban.
 
 La suite corre contra H2. PostgreSQL se verificó manualmente: migraciones, flujo completo con `curl`, peticiones simultáneas y la restricción contra solapamientos.
-
-<!-- TODO (Alexei): las dos comprobaciones anteriores las hizo la IA. Si las reproduces tú, puedes pasarlas a primera persona ("comprobé…"). -->
-
 ---
 
 ## Qué haría con más tiempo
